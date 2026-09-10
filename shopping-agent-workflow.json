@@ -1,0 +1,595 @@
+{
+  "name": "Weni Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "weni-agent",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b49ffb90-7d4a-4a60-9271-1ad171629d96",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        448,
+        -80
+      ],
+      "webhookId": "WEBHOOK_ID_PLACEHOLDER",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "name": "API Loja VTEX"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1336cc1a-9634-4f63-a7cf-08631b2e9f78",
+              "name": "sessionId",
+              "value": "={{ $json.body.contact_urn.slice(4) || 'sessao-anonima-' + $now }}",
+              "type": "string"
+            },
+            {
+              "id": "2a4c1d90-1111-4c22-9e33-7788aa00cd01",
+              "name": "message",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9abfbe56-b393-42b3-a6f1-a8fc319fb6c9",
+      "name": "Edit Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        672,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message }}",
+        "options": {
+          "systemMessage": "={{ $json}}",
+          "maxIterations": 4
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1504,
+        -80
+      ],
+      "id": "59fe7a96-4149-47c5-ab7b-0a75e9182510",
+      "name": "AI Agent",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "description": "Retorna a lista de todas as lojas cadastradas com seus nomes, endereços e coordenadas de latitude e longitude para cálculo de distância.",
+        "jsCode": "// Substitua pela lista real de lojas (nome, latitude e longitude)\nconst lojas = [\n  { nome: \"Loja Exemplo Centro\", lat: -1.4550, lon: -48.4900 },\n  { nome: \"Loja Exemplo Bairro Norte\", lat: -1.4300, lon: -48.4600 },\n  { nome: \"Loja Exemplo Bairro Sul\", lat: -1.4700, lon: -48.4400 },\n];\n\nfunction haversine(lat1, lon1, lat2, lon2) {\n  const R = 6371;\n  const dLat = (lat2 - lat1) * Math.PI / 180;\n  const dLon = (lon2 - lon1) * Math.PI / 180;\n  const a = Math.sin(dLat/2)**2 +\n            Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *\n            Math.sin(dLon/2)**2;\n  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));\n}\n\n// Pega as coordenadas passadas para a Tool (ou substitua pelos campos que a IA envia)\nconst clienteLat = parseFloat($fromAI('lat', 'Latitude do cliente'));\nconst clienteLon = parseFloat($fromAI('lon', 'Longitude do cliente'));\n\nconst comDistancia = lojas.map(loja => ({\n  ...loja,\n  distancia_km: Math.round(haversine(clienteLat, clienteLon, loja.lat, loja.lon) * 10) / 10\n}));\n\ncomDistancia.sort((a, b) => a.distancia_km - b.distancia_km);\n\n// Retorna as 3 lojas mais próximas convertidas em texto para a IA ler\nreturn JSON.stringify(comDistancia.slice(0, 3));"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        1376,
+        144
+      ],
+      "id": "b9917f24-386d-438a-acc0-9b37f12eef51",
+      "name": "Code Tool"
+    },
+    {
+      "parameters": {
+        "toolDescription": "CARRINHO: Use quando o cliente quiser adicionar, remover ou revisar itens no carrinho de compras.",
+        "method": "POST",
+        "url": "=https://SUBSTITUA_PELA_SUA_LOJA.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{ $fromAI('orderFormId', 'ID do carrinho se já existir. Se for o primeiro item, envie vazio', 'string') || 'orderForm' }}/items?sc=3",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"orderItems\": [\n    {\n      \"id\": \"{{ $fromAI('skuId', 'ID/SKU do produto retornado na busca', 'string') }}\",\n      \"quantity\": {{ $fromAI('quantidade', 'Quantidade de itens a adicionar (padrão 1)', 'number') }},\n      \"seller\": \"1\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1504,
+        144
+      ],
+      "id": "9cb0c3f0-d1bf-4c42-bf13-7a1396f1b13b",
+      "name": "Carrinho"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Captura os dados do nó anterior usando o padrão atual do n8n\nconst inputData = $input.first().json;\n\n// Garante que 'message' nunca vá como null (se estiver vazio no teste, usa texto padrão)\nconst mensagemCliente = inputData.message || inputData.body?.message || \"Quero comprar ração\";\n\n// Sua lógica de horário (mantida 100%)\nconst agora = new Date();\nconst horaLocal = new Date(agora.toLocaleString('en-US', { timeZone: 'America/Belem' }));\nconst diaSemana = horaLocal.getDay(); // 0=domingo, 6=sábado\nconst hora = horaLocal.getHours();\nconst minuto = horaLocal.getMinutes();\nconst minutosAtuais = hora * 60 + minuto;\n\nconst horarios = {\n  0: null, // domingo fechado\n  1: { abre: 8*60, fecha: 18*60 },\n  2: { abre: 8*60, fecha: 18*60 },\n  3: { abre: 8*60, fecha: 18*60 },\n  4: { abre: 8*60, fecha: 18*60 },\n  5: { abre: 8*60, fecha: 18*60 },\n  6: { abre: 8*60, fecha: 13*60 }\n};\n\nconst horarioHoje = horarios[diaSemana];\nconst lojaAberta = Boolean(horarioHoje && minutosAtuais >= horarioHoje.abre && minutosAtuais < horarioHoje.fecha);\n\n// Corte de entrega no mesmo dia (ex: até 15h)\nconst corteEntregaMinutos = 15 * 60;\nconst aindaDaPraEntregarHoje = minutosAtuais < corteEntregaMinutos;\n\nreturn [{\n  json: {\n    ...inputData,\n    message: mensagemCliente, // <--- Corrige o erro de mensagem nula\n    loja_aberta: lojaAberta,\n    entrega_mesmo_dia_disponivel: lojaAberta && aindaDaPraEntregarHoje,\n    horario_atual: `${hora}:${String(minuto).padStart(2,'0')}`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -80
+      ],
+      "id": "b93f9a59-4c84-4a0c-b1b1-7d6a723a5486",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"reply\": $json.output } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2224,
+        -80
+      ],
+      "id": "919e890e-dbf9-46f6-96db-aede047ef839",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "description": "ENTREGA: Use quando o cliente quiser rastrear, saber prazo, status ou reportar problema de entrega de um pedido.",
+        "workflowId": {
+          "__rl": true,
+          "value": "SUBSTITUA_PELO_ID_DO_SUBWORKFLOW",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/SUBSTITUA_PELO_ID_DO_SUBWORKFLOW",
+          "cachedResultName": "Sub - Verificar Entrega"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "cep": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('cep', `O número do CEP informado pelo usuário para validação de endereço.`, 'string') }}"
+          },
+          "matchingColumns": [
+            "cep"
+          ],
+          "schema": [
+            {
+              "id": "cep",
+              "displayName": "cep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1632,
+        144
+      ],
+      "id": "740e137f-9008-4abb-8f18-0c9816bc9a99",
+      "name": "Sub - Verificar Entrega"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionId }}",
+        "contextWindowLength": "={{ 4 }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.4,
+      "position": [
+        1248,
+        144
+      ],
+      "id": "8cd993a6-422c-4e6f-83b8-8585a831ae24",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "BUSCAR_PRODUTO: Use quando o cliente quiser encontrar, ver opções, comparar ou saber disponibilidade de um produto.",
+        "workflowId": {
+          "__rl": true,
+          "value": "SUBSTITUA_PELO_ID_DO_SUBWORKFLOW",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/SUBSTITUA_PELO_ID_DO_SUBWORKFLOW",
+          "cachedResultName": "Sub - Buscar Produtos"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "termo": "={{ $fromAI('termo', 'Nome do produto, marca ou categoria que o cliente quer buscar. Ex: racao golden porte grande', 'string') }}"
+          },
+          "matchingColumns": [
+            "termo"
+          ],
+          "schema": [
+            {
+              "id": "termo",
+              "displayName": "termo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        144
+      ],
+      "id": "99ad7a50-a5a4-4bc2-a370-d7f61bda7c20",
+      "name": "Sub - Buscar Produtos"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        144
+      ],
+      "id": "2a5fa87b-c393-432d-ad70-c52b98684af9",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "FINALIZAR_PEDIDO: Use quando o cliente quiser concluir a compra ou fazer checkout.",
+        "workflowId": {
+          "__rl": true,
+          "value": "SUBSTITUA_PELO_ID_DO_SUBWORKFLOW",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/SUBSTITUA_PELO_ID_DO_SUBWORKFLOW",
+          "cachedResultName": "Sub - Finalizar Pedido"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "nome_cliente",
+              "displayName": "nome_cliente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "endereço_entrega",
+              "displayName": "endereço_entrega",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "forma_pagamento",
+              "displayName": "forma_pagamento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "itens",
+              "displayName": "itens",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "valor_total",
+              "displayName": "valor_total",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1888,
+        144
+      ],
+      "id": "c93ffcf0-d48c-46fc-8b19-8d1f2b89d679",
+      "name": "Sub - Finalizar Pedido"
+    },
+    {
+      "parameters": {
+        "description": "CANCELAR_PEDIDO: Use quando o cliente quiser cancelar um pedido já realizado.",
+        "workflowId": {
+          "__rl": true,
+          "value": "SUBSTITUA_PELO_ID_DO_SUBWORKFLOW",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/SUBSTITUA_PELO_ID_DO_SUBWORKFLOW",
+          "cachedResultName": "Sub - Cancelar Pedido"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [
+            "id_pedido"
+          ],
+          "schema": [
+            {
+              "id": "id_pedido",
+              "displayName": "id_pedido",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        2016,
+        144
+      ],
+      "id": "9ed28169-3089-4317-9859-6df3772b2bb3",
+      "name": "Sub - Cancelar Pedido"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {}
+      },
+      "id": "58c5b61e-a124-429f-948e-418b56cb55fc",
+      "name": "Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        256
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "CREDENTIAL_ID_PLACEHOLDER",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.SUBSTITUA_PELO_DOMINIO/delivery/cliente/cpf/SUBSTITUA_PELO_CPF",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "SUBSTITUA_PELO_TOKEN"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2144,
+        144
+      ],
+      "id": "32a20841-5f03-49e3-a1be-3f89cb181351",
+      "name": "HTTP Request"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carrinho": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sub - Verificar Entrega": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sub - Buscar Produtos": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sub - Finalizar Pedido": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sub - Cancelar Pedido": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Chat Model": {
+      "ai_languageModel": [
+        []
+      ]
+    },
+    "HTTP Request": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "nodeGroups": [],
+  "tags": []
+}
