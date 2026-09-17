@@ -91,7 +91,7 @@
       "parameters": {
         "toolDescription": "CARRINHO: Use quando o cliente quiser adicionar, remover ou revisar itens no carrinho de compras.",
         "method": "POST",
-        "url": "=https://SUBSTITUA_PELA_SUA_LOJA.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{ $fromAI('orderFormId', 'ID do carrinho se já existir. Se for o primeiro item, envie vazio', 'string') || 'orderForm' }}/items?sc=3",
+        "url": "=https://{{ $env.VTEX_ACCOUNT_NAME || 'SUA_LOJA' }}.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{ $fromAI('orderFormId', 'ID do carrinho se já existir. Se for o primeiro item, envie vazio', 'string') || 'orderForm' }}/items?sc=3",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"orderItems\": [\n    {\n      \"id\": \"{{ $fromAI('skuId', 'ID/SKU do produto retornado na busca', 'string') }}\",\n      \"quantity\": {{ $fromAI('quantidade', 'Quantidade de itens a adicionar (padrão 1)', 'number') }},\n      \"seller\": \"1\"\n    }\n  ]\n}",
@@ -403,13 +403,13 @@
     },
     {
       "parameters": {
-        "url": "https://api.SUBSTITUA_PELO_DOMINIO/delivery/cliente/cpf/SUBSTITUA_PELO_CPF",
+        "url": "=https://api.{{ $env.DELIVERY_API_DOMAIN || 'DOMINIO_EXEMPLO' }}/delivery/cliente/cpf/{{ $fromAI('cpf', 'CPF do cliente apenas numeros', 'string') }}",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
             {
               "name": "token",
-              "value": "SUBSTITUA_PELO_TOKEN"
+              "value": "={{ $env.DELIVERY_API_TOKEN }}"
             }
           ]
         },
